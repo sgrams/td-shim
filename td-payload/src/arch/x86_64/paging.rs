@@ -55,11 +55,21 @@ pub fn setup_paging(memory_map: &[E820Entry]) -> Result<(), Error> {
 
         identity_map(&mut pt, entry.addr, entry.size)?;
     }
-    identity_map(
-        &mut pt,
-        build_time::TD_SHIM_FIRMWARE_BASE as u64,
-        build_time::TD_SHIM_FIRMWARE_SIZE as u64,
-    )?;
+
+    // Identity-map the legacy 16 MB firmware window just below 4 GB. The
+    // strict TD_SHIM_FIRMWARE_BASE/SIZE extents are a subset of this window
+    // and are covered by the surrounding maps below.
+    const LEGACY_FW_BASE: u64 = 0xFF00_0000;
+    const LEGACY_FW_END: u64 = 0x1_0000_0000;
+    let fw_base = build_time::TD_SHIM_FIRMWARE_BASE as u64;
+    let fw_end = fw_base + build_time::TD_SHIM_FIRMWARE_SIZE as u64;
+    if fw_base > LEGACY_FW_BASE {
+        identity_map(&mut pt, LEGACY_FW_BASE, fw_base - LEGACY_FW_BASE)?;
+    }
+    identity_map(&mut pt, fw_base, build_time::TD_SHIM_FIRMWARE_SIZE as u64)?;
+    if fw_end < LEGACY_FW_END {
+        identity_map(&mut pt, fw_end, LEGACY_FW_END - fw_end)?;
+    }
 
     cr3_write(pml4 as u64);
     Ok(())
